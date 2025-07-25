@@ -96,7 +96,7 @@ services:
     container_name: flower_nginx
     volumes:
       - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf
-      - ./docker/ssl:/etc/nginx/ssl
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - nginx_logs:/var/log/nginx
     ports:
       - "80:80"

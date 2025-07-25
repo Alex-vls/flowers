@@ -34,7 +34,8 @@ class User(Base):
     # Relationships
     subscriptions = relationship("Subscription", back_populates="user")
     orders = relationship("Order", back_populates="user")
-    reviews = relationship("Review", back_populates="user")
+    reviews = relationship("Review", foreign_keys="Review.user_id", back_populates="user")
+    moderated_reviews = relationship("Review", foreign_keys="Review.moderated_by")
     bonuses = relationship("Bonus", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     
