@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
 
@@ -29,6 +30,13 @@ class User(Base):
     address = Column(Text, nullable=True)
     preferences = Column(Text, nullable=True)  # JSON string for user preferences
     bonus_points = Column(Integer, default=0, nullable=False)
+    
+    # Relationships
+    subscriptions = relationship("Subscription", back_populates="user")
+    orders = relationship("Order", back_populates="user")
+    reviews = relationship("Review", back_populates="user")
+    bonuses = relationship("Bonus", back_populates="user")
+    notifications = relationship("Notification", back_populates="user")
     
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>" 
