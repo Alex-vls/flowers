@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
 import Alert from '@/components/ui/Alert'
 import { useAuthStore } from '@/store/authStore'
@@ -27,49 +26,6 @@ declare global {
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login, setError, setLoading, error, isLoading } = useAuthStore()
-  
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  })
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Ошибка входа')
-      }
-
-      // Получаем информацию о пользователе
-      const userResponse = await fetch('/api/v1/users/me', {
-        headers: {
-          'Authorization': `Bearer ${data.access_token}`,
-        },
-      })
-
-      const userData = await userResponse.json()
-      
-      login(userData, data.access_token)
-      navigate(userData.role === 'admin' ? '/admin' : '/')
-    } catch (error: any) {
-      setError(error.message)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleTelegramAuth = async () => {
     setLoading(true)
@@ -113,14 +69,15 @@ export default function LoginPage() {
   const isTelegramAvailable = window.Telegram?.WebApp?.initDataUnsafe?.user
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-rose-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            🌸 Вход в аккаунт
+        <div className="text-center">
+          <div className="text-6xl mb-4">🌸</div>
+          <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
+            MSK Flower
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Punk rock цветы ждут вас!
+          <p className="text-sm text-gray-600">
+            Punk rock доставка цветов
           </p>
         </div>
 
@@ -132,80 +89,97 @@ export default function LoginPage() {
 
         <Card className="p-8">
           <div className="space-y-6">
-            {/* Telegram авторизация */}
-            {isTelegramAvailable && (
+            {isTelegramAvailable ? (
               <div className="space-y-4">
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Добро пожаловать! 🎉
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Войдите через Telegram, чтобы получить персонализированный опыт
+                  </p>
+                </div>
+
                 <Button
                   onClick={handleTelegramAuth}
                   disabled={isLoading}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-4 text-lg font-medium shadow-lg transform transition hover:scale-105"
                 >
-                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16c-.169 1.858-.896 6.728-.896 6.728-.463 1.871-1.724 2.231-3.463 1.402l-1.563-1.095-1.374 1.343c-.132.131-.243.243-.5.243l.178-2.543 5.982-5.406c.258-.23-.057-.357-.4-.126l-7.4 4.662-3.174-.992c-.684-.214-.699-.684.143-1.008L16.58 7.752c.57-.213 1.067.128.987.408z"/>
                   </svg>
-                  {isLoading ? 'Вход...' : 'Войти через Telegram'}
+                  {isLoading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Подключение...
+                    </div>
+                  ) : (
+                    'Войти через Telegram'
+                  )}
                 </Button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">или</span>
+
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="text-blue-600 text-xl mr-3">ℹ️</div>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">Что вас ждет:</p>
+                      <ul className="list-disc list-inside space-y-1 text-xs">
+                        <li>Персональные уведомления в Telegram</li>
+                        <li>Быстрое оформление заказов</li>
+                        <li>Управление подписками через бот</li>
+                        <li>Бонусные баллы и скидки</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="text-4xl mb-4">🤖</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Вход только через Telegram
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Наш сервис работает исключительно через Telegram для максимального удобства
+                  </p>
+                </div>
+
+                <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                  <div className="flex items-start">
+                    <div className="text-yellow-600 text-xl mr-3">⚠️</div>
+                    <div className="text-sm text-yellow-800">
+                      <p className="font-medium mb-2">Чтобы войти в систему:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Найдите бота <strong>@Flower_Moscow_appbot</strong> в Telegram</li>
+                        <li>Нажмите <strong>/start</strong></li>
+                        <li>Используйте кнопку <strong>"Открыть магазин"</strong></li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <a
+                    href="https://t.me/Flower_Moscow_appbot"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16c-.169 1.858-.896 6.728-.896 6.728-.463 1.871-1.724 2.231-3.463 1.402l-1.563-1.095-1.374 1.343c-.132.131-.243.243-.5.243l.178-2.543 5.982-5.406c.258-.23-.057-.357-.4-.126l-7.4 4.662-3.174-.992c-.684-.214-.699-.684.143-1.008L16.58 7.752c.57-.213 1.067.128.987.408z"/>
+                    </svg>
+                    Открыть Telegram бот
+                  </a>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-xs text-gray-500">
+                    Время работы: 8:00 - 22:00 | Поддержка: @Flower_Moscow_appbot
+                  </p>
+                </div>
+              </div>
             )}
-
-            {/* Обычная форма */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="admin@flowerpunk.ru"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Пароль
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  placeholder="••••••••"
-                  className="mt-1"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-pink-600 hover:bg-pink-700 text-white"
-              >
-                {isLoading ? 'Вход...' : 'Войти'}
-              </Button>
-            </form>
-
-            <div className="text-center">
-              <p className="text-sm text-gray-600">
-                Тестовые данные:
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                admin@flowerpunk.ru / password123
-              </p>
-            </div>
           </div>
         </Card>
       </div>

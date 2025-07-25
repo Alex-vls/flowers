@@ -5,13 +5,18 @@ from typing import Optional, List
 import httpx
 import json
 import logging
+from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.flower import Flower
 from app.models.subscription import Subscription
 from app.models.order import Order
-from app.crud import crud_user, crud_flower, crud_subscription, crud_order
+from app.crud.crud_user import crud_user
+from app.crud.crud_flower import crud_flower
+from app.crud.crud_subscription import crud_subscription
+from app.crud.crud_order import crud_order
 from app.schemas.telegram import TelegramUpdate, TelegramMessage, TelegramInlineKeyboard
 
 router = APIRouter()
@@ -71,6 +76,85 @@ class TelegramBot:
 
 bot = TelegramBot()
 
+async def send_welcome_message_on_login(user: User, is_new_user: bool = False):
+    """Отправить приветственное сообщение при авторизации на сайте"""
+    if not user.telegram_id:
+        logger.info(f"User {user.id} has no telegram_id, skipping welcome message")
+        return
+    
+    try:
+        if is_new_user:
+            welcome_text = f"""
+🌸 <b>Добро пожаловать, {user.full_name}!</b> 🌸
+
+🎉 <b>Поздравляем с регистрацией в MSK Flower!</b>
+
+Вы стали частью нашего punk rock сообщества любителей цветов!
+
+<b>Что вас ждет:</b>
+• 🌹 Свежие цветы каждый день
+• 📅 Гибкие подписки на доставку
+• 📦 Быстрое оформление заказов
+• 💳 Бонусная система и скидки
+• 🔔 Персональные уведомления
+
+Ваш стартовый баланс: <b>{user.bonus_points} бонусных баллов</b>
+
+<i>Начните с просмотра каталога! 👇</i>
+            """
+        else:
+            welcome_text = f"""
+🌸 <b>С возвращением, {user.full_name}!</b> 🌸
+
+Вы успешно авторизовались на сайте MSK Flower!
+
+Рады видеть вас снова в нашем punk rock мире цветов! 🎸
+
+<b>Ваш текущий статус:</b>
+• 💳 Бонусный баланс: <b>{user.bonus_points} баллов</b>
+• 🔔 Уведомления: активны
+• 🚀 Готовы к новым заказам!
+
+<i>Продолжайте делать мир ярче! 👇</i>
+            """
+        
+        # Создать кнопку "Открыть магазин"
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "🌺 Открыть магазин",
+                        "url": "https://msk-flower.su"
+                    }
+                ],
+                [
+                    {
+                        "text": "🌹 Каталог",
+                        "url": "https://msk-flower.su/catalog"
+                    },
+                    {
+                        "text": "👤 Профиль",
+                        "url": "https://msk-flower.su/profile"
+                    }
+                ]
+            ]
+        }
+        
+        # Отправить сообщение
+        result = await bot.send_message(
+            chat_id=int(user.telegram_id),
+            text=welcome_text,
+            reply_markup=reply_markup
+        )
+        
+        user_type = "new" if is_new_user else "existing"
+        logger.info(f"Welcome message sent to {user_type} user {user.id} (telegram_id: {user.telegram_id})")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to send welcome message to user {user.id}: {e}")
+        return None
+
 def create_main_menu():
     """Создать главное меню"""
     return {
@@ -128,15 +212,20 @@ async def telegram_webhook(request: Request):
 
 async def handle_message(message: TelegramMessage):
     """Обработать входящее сообщение"""
+    from app.core.database import SessionLocal
+    
     chat_id = message.chat.id
     text = message.text or ""
     
-    # Проверить, зарегистрирован ли пользователь
-    user = await crud_user.get_by_telegram_id(chat_id)
-    
-    if not user:
-        # Приветствие для новых пользователей
-        welcome_text = """
+    # Получить сессию БД
+    db = SessionLocal()
+    try:
+        # Проверить, зарегистрирован ли пользователь
+        user = crud_user.get_by_telegram_id(db, str(chat_id))
+        
+        if not user:
+            # Приветствие для новых пользователей
+            welcome_text = """
 🌸 <b>Добро пожаловать в MSK Flower!</b> 🌸
 
 Мы доставляем свежие цветы каждый день прямо к вашему столу.
@@ -146,17 +235,19 @@ https://msk-flower.su/register
 
 После регистрации свяжите ваш аккаунт с ботом, отправив команду:
 /link <ваш_email>
-        """
-        await bot.send_message(chat_id, welcome_text, create_main_menu())
-        return
-    
-    # Обработка команд
-    if text.startswith("/"):
-        await handle_command(message, user)
-    else:
-        await handle_text_message(message, user)
+            """
+            await bot.send_message(chat_id, welcome_text, create_main_menu())
+            return
+        
+        # Обработка команд
+        if text.startswith("/"):
+            await handle_command(message, user, db)
+        else:
+            await handle_text_message(message, user, db)
+    finally:
+        db.close()
 
-async def handle_command(message: TelegramMessage, user: User):
+async def handle_command(message: TelegramMessage, user: User, db: Session):
     """Обработать команды"""
     chat_id = message.chat.id
     text = message.text
@@ -184,10 +275,10 @@ async def handle_command(message: TelegramMessage, user: User):
         await show_catalog(message.chat.id)
     
     elif text == "📅 Мои подписки":
-        await show_subscriptions(message.chat.id, user.id)
+        await show_subscriptions(message.chat.id, user.id, db)
     
     elif text == "📦 Мои заказы":
-        await show_orders(message.chat.id, user.id)
+        await show_orders(message.chat.id, user.id, db)
     
     elif text == "👤 Профиль":
         await show_profile(message.chat.id, user)
@@ -211,7 +302,7 @@ async def handle_command(message: TelegramMessage, user: User):
         """
         await bot.send_message(chat_id, support_text)
 
-async def handle_text_message(message: TelegramMessage, user: User):
+async def handle_text_message(message: TelegramMessage, user: User, db: Session):
     """Обработать текстовые сообщения"""
     chat_id = message.chat.id
     text = message.text
@@ -256,57 +347,69 @@ async def show_catalog(chat_id: int):
 
 async def show_category_flowers(chat_id: int, category: str):
     """Показать цветы категории"""
-    flowers = await crud_flower.get_by_category(category, limit=5)
+    from app.core.database import SessionLocal
     
-    if not flowers:
-        await bot.send_message(chat_id, "В этой категории пока нет цветов.")
-        return
-    
-    text = f"🌹 <b>Цветы в категории '{category}'</b>\n\n"
-    
-    keyboard = []
-    for flower in flowers:
-        text += f"• {flower.name} - {flower.price} ₽\n"
-        keyboard.append([{
-            "text": f"🌹 {flower.name}",
-            "callback_data": f"flower_{flower.id}"
-        }])
-    
-    keyboard.append([{"text": "🔙 Назад", "callback_data": "main_menu"}])
-    
-    await bot.send_message(chat_id, text, {"inline_keyboard": keyboard})
+    db = SessionLocal()
+    try:
+        flowers = crud_flower.get_by_category(db, category, limit=5)
+        
+        if not flowers:
+            await bot.send_message(chat_id, "В этой категории пока нет цветов.")
+            return
+        
+        text = f"🌹 <b>Цветы в категории '{category}'</b>\n\n"
+        
+        keyboard = []
+        for flower in flowers:
+            text += f"• {flower.name} - {flower.price} ₽\n"
+            keyboard.append([{
+                "text": f"🌹 {flower.name}",
+                "callback_data": f"flower_{flower.id}"
+            }])
+        
+        keyboard.append([{"text": "🔙 Назад", "callback_data": "main_menu"}])
+        
+        await bot.send_message(chat_id, text, {"inline_keyboard": keyboard})
+    finally:
+        db.close()
 
 async def show_flower_details(chat_id: int, flower_id: int):
     """Показать детали цветка"""
-    flower = await crud_flower.get(flower_id)
-    if not flower:
-        await bot.send_message(chat_id, "Цветок не найден.")
-        return
+    from app.core.database import SessionLocal
     
-    text = f"""
+    db = SessionLocal()
+    try:
+        flower = crud_flower.get(db, flower_id)
+        if not flower:
+            await bot.send_message(chat_id, "Цветок не найден.")
+            return
+        
+        text = f"""
 🌹 <b>{flower.name}</b>
 
 {flower.description}
 
 💰 Цена: {flower.price} ₽
-📦 В наличии: {flower.stock} шт.
-    """
-    
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🛒 Добавить в корзину", "callback_data": f"add_to_cart_{flower_id}"}],
-            [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-        ]
-    }
-    
-    if flower.image_url:
-        await bot.send_photo(chat_id, flower.image_url, text, keyboard)
-    else:
-        await bot.send_message(chat_id, text, keyboard)
+📦 В наличии: {flower.stock_quantity} шт.
+        """
+        
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🛒 Добавить в корзину", "callback_data": f"add_to_cart_{flower_id}"}],
+                [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+            ]
+        }
+        
+        if flower.image_url:
+            await bot.send_photo(chat_id, flower.image_url, text, keyboard)
+        else:
+            await bot.send_message(chat_id, text, keyboard)
+    finally:
+        db.close()
 
-async def show_subscriptions(chat_id: int, user_id: int):
+async def show_subscriptions(chat_id: int, user_id: int, db: Session):
     """Показать подписки пользователя"""
-    subscriptions = await crud_subscription.get_by_user(user_id)
+    subscriptions = crud_subscription.get_by_user(db, user_id)
     
     if not subscriptions:
         text = """
@@ -325,9 +428,9 @@ https://msk-flower.su/subscription
     
     await bot.send_message(chat_id, text)
 
-async def show_orders(chat_id: int, user_id: int):
+async def show_orders(chat_id: int, user_id: int, db: Session):
     """Показать заказы пользователя"""
-    orders = await crud_order.get_by_user(user_id, limit=5)
+    orders = crud_order.get_by_user(db, user_id, limit=5)
     
     if not orders:
         text = """

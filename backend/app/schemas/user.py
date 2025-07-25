@@ -79,4 +79,10 @@ class PasswordResetRequest(BaseModel):
 
 class PasswordResetConfirm(BaseModel):
     token: str
-    new_password: str 
+    new_password: str
+
+
+class TelegramAuthRequest(BaseModel):
+    telegram_id: str
+    first_name: str
+    last_name: Optional[str] = None 

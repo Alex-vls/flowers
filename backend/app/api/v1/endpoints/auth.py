@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -21,10 +21,14 @@ from app.schemas.user import (
     LoginRequest,
     RegisterRequest,
     PasswordResetRequest,
-    PasswordResetConfirm
+    PasswordResetConfirm,
+    TelegramAuthRequest
 )
+from app.api.v1.telegram import send_welcome_message_on_login
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/register", response_model=UserSchema)
@@ -57,12 +61,51 @@ def register(
     return user
 
 
-@router.post("/login", response_model=Token)
-def login(
+# @router.post("/login", response_model=Token)
+# def login(
+#     login_data: LoginRequest,
+#     background_tasks: BackgroundTasks,
+#     db: Session = Depends(get_db)
+# ) -> Any:
+#     """Login user - DEPRECATED: Use telegram-auth instead"""
+#     user = db.query(User).filter(User.email == login_data.email).first()
+#     if not user or not verify_password(login_data.password, user.hashed_password):
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Incorrect email or password"
+#         )
+#     
+#     if not user.is_active:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Inactive user"
+#         )
+#     
+#     # Create tokens
+#     access_token = create_access_token(data={"sub": user.id})
+#     refresh_token = create_refresh_token(data={"sub": user.id})
+#     
+#     # Отправить приветственное сообщение в Telegram (в фоновом режиме)
+#     if user.telegram_id:
+#         background_tasks.add_task(send_welcome_message_on_login, user)
+#         logger.info(f"Welcome message task added for user {user.id} (telegram_id: {user.telegram_id})")
+#     else:
+#         logger.info(f"User {user.id} has no telegram_id, skipping welcome message")
+#     
+#     return {
+#         "access_token": access_token,
+#         "refresh_token": refresh_token,
+#         "token_type": "bearer"
+#     }
+
+
+@router.post("/admin-login", response_model=Token)
+def admin_login(
     login_data: LoginRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ) -> Any:
-    """Login user - no mercy for wrong passwords"""
+    """Admin login - only for emergency access"""
     user = db.query(User).filter(User.email == login_data.email).first()
     if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
@@ -76,9 +119,18 @@ def login(
             detail="Inactive user"
         )
     
+    # Only allow admin users
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
     # Create tokens
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
+    
+    logger.info(f"Admin login: {user.id} ({user.email})")
     
     return {
         "access_token": access_token,
@@ -155,36 +207,47 @@ def confirm_password_reset(
 
 @router.post("/telegram-auth")
 def telegram_auth(
-    telegram_id: str,
-    first_name: str,
-    last_name: str = None,
+    auth_data: TelegramAuthRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ) -> Any:
-    """Authenticate via Telegram - no password needed"""
+    """Authenticate via Telegram - main auth method now"""
     # Check if user exists
-    user = db.query(User).filter(User.telegram_id == telegram_id).first()
+    user = db.query(User).filter(User.telegram_id == auth_data.telegram_id).first()
     
+    is_new_user = False
     if not user:
         # Create new user
-        full_name = f"{first_name} {last_name}" if last_name else first_name
+        full_name = f"{auth_data.first_name} {auth_data.last_name}" if auth_data.last_name else auth_data.first_name
         user = User(
-            email=f"telegram_{telegram_id}@flower.local",  # Temporary email
-            telegram_id=telegram_id,
+            email=f"telegram_{auth_data.telegram_id}@msk-flower.local",  # Temporary email
+            telegram_id=auth_data.telegram_id,
             full_name=full_name,
             role=UserRole.CLIENT,
-            is_verified=True  # Telegram users are pre-verified
+            is_verified=True,  # Telegram users are pre-verified
+            is_active=True
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+        is_new_user = True
+        logger.info(f"New user created via Telegram: {user.id} ({auth_data.telegram_id})")
+    else:
+        logger.info(f"Existing user logged in via Telegram: {user.id} ({auth_data.telegram_id})")
     
     # Create tokens
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
     
+    # Отправить приветственное сообщение в Telegram (в фоновом режиме)
+    # Отправляем для всех пользователей (и новых, и существующих)
+    background_tasks.add_task(send_welcome_message_on_login, user, is_new_user)
+    logger.info(f"Welcome message task added for user {user.id} (telegram_id: {auth_data.telegram_id})")
+    
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "user": user
+        "user": user,
+        "is_new_user": is_new_user
     } 
