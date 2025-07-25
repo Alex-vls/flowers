@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://msk-flower.su/sitemap.xml
+
+# Disallow admin and API routes
+Disallow: /admin/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+
+# Allow important pages
+Allow: /catalog
+Allow: /subscription
+Allow: /orders
+Allow: /profile
+
+# Crawl delay
+Crawl-delay: 1 

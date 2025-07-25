@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: flower_postgres_dev
+    environment:
+      POSTGRES_DB: flower_db
+      POSTGRES_USER: flower_user
+      POSTGRES_PASSWORD: flowersub123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: flower_redis_dev
+    command: redis-server --appendonly yes --requirepass flowersub123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flower_backend_dev
+    environment:
+      - DATABASE_URL=postgresql://flower_user:flowersub123@postgres:5432/flower_db
+      - REDIS_URL=redis://:flowersub123@redis:6379/0
+      - SECRET_KEY=your-super-secret-key-change-in-production-local-testing-only
+      - JWT_SECRET_KEY=your-jwt-secret-key-change-in-production-local-testing-only
+      - TELEGRAM_BOT_TOKEN=8463349994:AAGKX7FzQk5r5pBrGo0QV6udB41jza4OnkY
+      - TELEGRAM_BOT_USERNAME=Flower_Moscow_appbot
+      - ENVIRONMENT=development
+      - DEBUG=true
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - flower_network
+    restart: unless-stopped
+    command: uvicorn app.main_simple:app --host 0.0.0.0 --port 8000 --reload
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: flower_frontend_dev
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_TELEGRAM_BOT_USERNAME=Flower_Moscow_appbot
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - flower_network
+    restart: unless-stopped
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  flower_network:
+    driver: bridge 

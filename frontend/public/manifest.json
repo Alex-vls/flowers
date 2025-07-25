@@ -1,0 +1,79 @@
+{
+  "name": "FlowerSub - Ежедневная доставка цветов",
+  "short_name": "FlowerSub",
+  "description": "Ежедневная доставка свежих цветов в Москве. Подписка на цветы для вашего стола.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#16a34a",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "ru",
+  "categories": ["lifestyle", "shopping"],
+  "icons": [
+    {
+      "src": "/flower-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/flower-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Каталог",
+      "short_name": "Каталог",
+      "description": "Просмотр каталога цветов",
+      "url": "/catalog",
+      "icons": [
+        {
+          "src": "/flower-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Подписка",
+      "short_name": "Подписка",
+      "description": "Управление подписками",
+      "url": "/subscription",
+      "icons": [
+        {
+          "src": "/flower-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Заказы",
+      "short_name": "Заказы",
+      "description": "История заказов",
+      "url": "/orders",
+      "icons": [
+        {
+          "src": "/flower-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/screenshot-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+} 

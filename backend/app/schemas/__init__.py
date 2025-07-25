@@ -1,0 +1,1 @@
+# Pydantic schemas - data validation with attitude 
