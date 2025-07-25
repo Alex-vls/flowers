@@ -1,8 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import toast from 'react-hot-toast'
 
-// API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+// API base URL - используем относительный путь для production
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
