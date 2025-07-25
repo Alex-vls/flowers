@@ -248,6 +248,13 @@ def telegram_auth(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "user": user,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role.value,
+            "is_verified": user.is_verified,
+            "bonus_points": user.bonus_points
+        },
         "is_new_user": is_new_user
     } 
