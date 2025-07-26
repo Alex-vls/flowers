@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Button from '@/components/ui/Button'
-import Card from '@/components/ui/Card'
-import Alert from '@/components/ui/Alert'
-import { useAuthStore } from '@/store/authStore'
+import { Button, Card, Alert } from '@/components/ui'
+import { useAuth } from '@/hooks/useAuth'
+import TelegramLoginWidget from '@/components/TelegramLoginWidget'
+import api from '@/lib/api'
 
 declare global {
   interface Window {
@@ -18,6 +18,41 @@ declare global {
             username?: string
           }
         }
+        colorScheme?: string
+        themeParams?: any
+        isExpanded?: boolean
+        viewportHeight?: number
+        viewportStableHeight?: number
+        headerColor?: string
+        backgroundColor?: string
+        BackButton?: {
+          show: () => void
+          hide: () => void
+          onClick: (callback: () => void) => void
+        }
+        MainButton?: {
+          text: string
+          color: string
+          textColor: string
+          isVisible: boolean
+          isProgressVisible: boolean
+          show: () => void
+          hide: () => void
+          enable: () => void
+          disable: () => void
+          showProgress: () => void
+          hideProgress: () => void
+          setText: (text: string) => void
+          onClick: (callback: () => void) => void
+        }
+        HapticFeedback?: {
+          impactOccurred: (style: string) => void
+          notificationOccurred: (type: string) => void
+          selectionChanged: () => void
+        }
+        expand: () => void
+        close?: () => void
+        ready: () => void
       }
     }
   }
@@ -25,48 +60,67 @@ declare global {
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { login, setError, setLoading, error, isLoading } = useAuthStore()
+  const { isAuthenticated, login } = useAuth()
+  const [isLoading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleTelegramAuth = async () => {
+  // Проверяем, залогинен ли пользователь
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/')
+    }
+  }, [isAuthenticated, navigate])
+
+  const handleTelegramAuth = async (telegramUser: any) => {
     setLoading(true)
     setError(null)
 
     try {
-      const tg = window.Telegram?.WebApp
-      if (!tg?.initDataUnsafe?.user) {
-        throw new Error('Telegram WebApp недоступен')
-      }
-
-      const user = tg.initDataUnsafe.user
-      
-      const response = await fetch('/api/v1/auth/telegram-auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          telegram_id: user.id.toString(),
-          first_name: user.first_name,
-          last_name: user.last_name,
-        }),
+      // Используем endpoint для веб-сайта
+      const response = await api.post('/auth/telegram-website', {
+        id: telegramUser.id.toString(),
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name || null,
+        username: telegramUser.username || null,
+        photo_url: telegramUser.photo_url || null,
+        auth_date: telegramUser.auth_date,
+        hash: telegramUser.hash
       })
 
-      const data = await response.json()
+      const data = response.data
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Ошибка Telegram авторизации')
-      }
+      // Store tokens
+      localStorage.setItem('access_token', data.access_token)
+      localStorage.setItem('refresh_token', data.refresh_token)
 
+      // Update store
       login(data.user, data.access_token)
-      navigate(data.user.role === 'admin' ? '/admin' : '/')
+      
+      // Redirect based on role
+      window.location.href = data.user.role === 'admin' ? '/admin' : '/'
     } catch (error: any) {
-      setError(error.message)
+      setError(error.response?.data?.detail || 'Ошибка авторизации')
     } finally {
       setLoading(false)
     }
   }
 
-  const isTelegramAvailable = window.Telegram?.WebApp?.initDataUnsafe?.user
+  // Если пользователь уже авторизован, показываем сообщение
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-rose-50">
+        <Card className="p-8 text-center">
+          <div className="text-6xl mb-4">🌸</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            Вы уже авторизованы!
+          </h2>
+          <Button onClick={() => navigate('/')} className="bg-pink-500 hover:bg-pink-600">
+            Перейти на главную
+          </Button>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-rose-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -82,106 +136,111 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <Alert variant="destructive">
+          <Alert>
             {error}
           </Alert>
         )}
 
         <Card className="p-8">
           <div className="space-y-6">
-            {isTelegramAvailable ? (
-              <div className="space-y-4">
-                <div className="text-center mb-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Добро пожаловать! 🎉
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    Войдите через Telegram, чтобы получить персонализированный опыт
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Войти в систему
+              </h3>
+              <p className="text-sm text-gray-600">
+                Войдите через Telegram, чтобы получить персонализированный опыт
+              </p>
+            </div>
+
+            {/* Website Telegram Login Widget */}
+            <div className="space-y-4">
+              <div className="text-center">
+                <TelegramLoginWidget
+                  botName="Flower_Moscow_appbot"
+                  onAuth={handleTelegramAuth}
+                  buttonSize="large"
+                  requestAccess={true}
+                  className="flex justify-center"
+                />
+                
+                {/* Временная авторизация через бота */}
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 mb-2">
+                    Для входа в систему:
                   </p>
-                </div>
-
-                <Button
-                  onClick={handleTelegramAuth}
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-4 text-lg font-medium shadow-lg transform transition hover:scale-105"
-                >
-                  <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16c-.169 1.858-.896 6.728-.896 6.728-.463 1.871-1.724 2.231-3.463 1.402l-1.563-1.095-1.374 1.343c-.132.131-.243.243-.5.243l.178-2.543 5.982-5.406c.258-.23-.057-.357-.4-.126l-7.4 4.662-3.174-.992c-.684-.214-.699-.684.143-1.008L16.58 7.752c.57-.213 1.067.128.987.408z"/>
-                  </svg>
-                  {isLoading ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Подключение...
-                    </div>
-                  ) : (
-                    'Войти через Telegram'
-                  )}
-                </Button>
-
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="flex items-start">
-                    <div className="text-blue-600 text-xl mr-3">ℹ️</div>
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium mb-1">Что вас ждет:</p>
-                      <ul className="list-disc list-inside space-y-1 text-xs">
-                        <li>Персональные уведомления в Telegram</li>
-                        <li>Быстрое оформление заказов</li>
-                        <li>Управление подписками через бот</li>
-                        <li>Бонусные баллы и скидки</li>
-                      </ul>
-                    </div>
+                  <div className="space-y-2">
+                    <Button
+                      onClick={() => {
+                        // Открываем бота для получения данных пользователя
+                        window.open('https://t.me/Flower_Moscow_appbot', '_blank')
+                      }}
+                      variant="outline" 
+                      className="w-full bg-blue-500 text-white hover:bg-blue-600"
+                    >
+                      🤖 Открыть бота
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        // Создаем тестового пользователя
+                        const testUser = {
+                          id: "12345",
+                          first_name: "Тест",
+                          last_name: "Пользователь", 
+                          username: "test_user"
+                        }
+                        handleTelegramAuth(testUser)
+                      }}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      🔑 Тестовый вход
+                    </Button>
                   </div>
                 </div>
+                
+                {isLoading && (
+                  <div className="mt-4 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+                    <span className="text-sm text-gray-600">Авторизация...</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="text-4xl mb-4">🤖</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Вход только через Telegram
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Наш сервис работает исключительно через Telegram для максимального удобства
-                  </p>
-                </div>
-
-                <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-                  <div className="flex items-start">
-                    <div className="text-yellow-600 text-xl mr-3">⚠️</div>
-                    <div className="text-sm text-yellow-800">
-                      <p className="font-medium mb-2">Чтобы войти в систему:</p>
-                      <ol className="list-decimal list-inside space-y-1 text-xs">
-                        <li>Найдите бота <strong>@Flower_Moscow_appbot</strong> в Telegram</li>
-                        <li>Нажмите <strong>/start</strong></li>
-                        <li>Используйте кнопку <strong>"Открыть магазин"</strong></li>
-                      </ol>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-center">
-                  <a
-                    href="https://t.me/Flower_Moscow_appbot"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                  >
-                    <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16c-.169 1.858-.896 6.728-.896 6.728-.463 1.871-1.724 2.231-3.463 1.402l-1.563-1.095-1.374 1.343c-.132.131-.243.243-.5.243l.178-2.543 5.982-5.406c.258-.23-.057-.357-.4-.126l-7.4 4.662-3.174-.992c-.684-.214-.699-.684.143-1.008L16.58 7.752c.57-.213 1.067.128.987.408z"/>
-                    </svg>
-                    Открыть Telegram бот
+              
+              <div className="text-center">
+                <p className="text-xs text-gray-500">
+                  Нажимая кнопку выше, вы соглашаетесь с{' '}
+                  <a href="/policy" className="text-blue-600 hover:underline">
+                    политикой конфиденциальности
                   </a>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-gray-500">
-                    Время работы: 8:00 - 22:00 | Поддержка: @Flower_Moscow_appbot
-                  </p>
-                </div>
+                </p>
               </div>
-            )}
+            </div>
           </div>
         </Card>
+
+        <div className="text-center">
+          <p className="text-sm text-gray-600 mb-4">
+            Еще нет Telegram? 
+          </p>
+          <div className="flex justify-center space-x-4">
+            <a 
+              href="https://telegram.org/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline text-sm"
+            >
+              Скачать Telegram
+            </a>
+            <a 
+              href="https://t.me/Flower_Moscow_appbot" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline text-sm"
+            >
+              Открыть наш бот
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   )

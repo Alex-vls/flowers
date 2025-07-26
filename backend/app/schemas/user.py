@@ -82,7 +82,28 @@ class PasswordResetConfirm(BaseModel):
     new_password: str
 
 
-class TelegramAuthRequest(BaseModel):
-    telegram_id: str
+# Новые схемы для четкого разделения
+class TelegramMiniAppAuthRequest(BaseModel):
+    """Схема для авторизации через Telegram Mini App"""
+    init_data: str          # Полные данные от Telegram WebApp (содержит hash внутри)
+
+
+class TelegramWebsiteAuthRequest(BaseModel):
+    """Схема для авторизации через веб-сайт (Login Widget)"""
+    id: str                 # Telegram user ID
     first_name: str
-    last_name: Optional[str] = None 
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    photo_url: Optional[str] = None
+    auth_date: int          # Unix timestamp
+    hash: str               # Подпись от Telegram
+
+
+class AuthResponse(BaseModel):
+    """Унифицированный ответ авторизации"""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: dict
+    is_new_user: bool
+    auth_method: str        # "miniapp" или "website" 

@@ -15,18 +15,19 @@ export interface User {
 export interface Flower {
   id: number
   name: string
-  description: string
+  description?: string
   category: string
   price: number
   image_url?: string
-  availability: boolean
-  stock: number
-  min_order_quantity: number
-  max_order_quantity: number
-  seasonal_info?: string
-  view_count: number
+  is_available: boolean
+  is_seasonal?: boolean
+  stock_quantity?: number
+  views_count: number
+  orders_count: number
+  min_order_quantity?: number
+  max_order_quantity?: number
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
 // Subscription types
@@ -137,13 +138,16 @@ export interface Review {
   order_id?: number
   flower_id?: number
   rating: number
-  title: string
+  title?: string
   content: string
   is_approved: boolean
   is_flagged: boolean
+  flagged_reason?: string
   admin_notes?: string
   helpful_votes: number
+  total_votes: number
   created_at: string
+  updated_at?: string
   user: User
   flower?: Flower
 }
@@ -157,6 +161,7 @@ export interface Notification {
   title: string
   content: string
   status: 'unread' | 'read'
+  is_read: boolean
   metadata?: Record<string, any>
   created_at: string
 }
@@ -181,10 +186,11 @@ export interface FlowerFilter {
   category?: string
   min_price?: number
   max_price?: number
-  availability?: boolean
-  seasonal?: boolean
+  is_available?: boolean
+  is_seasonal?: boolean
+  min_rating?: number
   search?: string
-  sort_by?: 'name' | 'price' | 'created_at' | 'view_count'
+  sort_by?: 'name' | 'price' | 'created_at' | 'views_count'
   sort_order?: 'asc' | 'desc'
 }
 

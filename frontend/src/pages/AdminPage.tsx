@@ -9,7 +9,7 @@ import Badge from '@/components/ui/Badge'
 import Tabs from '@/components/ui/Tabs'
 import Modal from '@/components/ui/Modal'
 import Alert from '@/components/ui/Alert'
-import type { User, Flower, Order, Subscription } from '@/types'
+import type { User, Flower, Order, Subscription, Review } from '@/types'
 
 interface AdminStats {
   users: number
@@ -173,6 +173,7 @@ export default function AdminPage() {
           { id: 'flowers', label: '🌸 Цветы' },
           { id: 'orders', label: '📦 Заказы' },
           { id: 'subscriptions', label: '🔄 Подписки' },
+          { id: 'reviews', label: '📝 Отзывы' },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -279,8 +280,8 @@ export default function AdminPage() {
                   <p className="text-sm text-gray-600 mb-2">{flower.description}</p>
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-green-600">{flower.price} ₽</span>
-                    <Badge className={flower.availability ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                      {flower.availability ? 'В наличии' : 'Нет в наличии'}
+                    <Badge className={flower.is_available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                      {flower.is_available ? 'В наличии' : 'Нет в наличии'}
                     </Badge>
                   </div>
                   <Button 
@@ -379,6 +380,11 @@ export default function AdminPage() {
             </div>
           </Card>
         )}
+
+        {/* Reviews */}
+        {activeTab === 'reviews' && (
+          <ReviewModerationPanel />
+        )}
       </div>
 
       {/* Flower Edit Modal */}
@@ -412,8 +418,7 @@ function FlowerEditForm({ flower, onSave, onCancel }: FlowerEditFormProps) {
     category: flower.category || 'ROSES',
     price: flower.price || 0,
     image_url: flower.image_url || '',
-    availability: flower.availability ?? true,
-    stock: flower.stock || 0,
+    is_available: flower.is_available ?? true,
     min_order_quantity: flower.min_order_quantity || 1,
     max_order_quantity: flower.max_order_quantity || 10,
   })
@@ -477,11 +482,11 @@ function FlowerEditForm({ flower, onSave, onCancel }: FlowerEditFormProps) {
       <div className="flex items-center space-x-2">
         <input
           type="checkbox"
-          id="availability"
-          checked={formData.availability}
-          onChange={(e) => setFormData(prev => ({ ...prev, availability: e.target.checked }))}
+          id="is_available"
+          checked={formData.is_available}
+          onChange={(e) => setFormData(prev => ({ ...prev, is_available: e.target.checked }))}
         />
-        <label htmlFor="availability" className="text-sm font-medium text-gray-700">
+        <label htmlFor="is_available" className="text-sm font-medium text-gray-700">
           В наличии
         </label>
       </div>
@@ -496,4 +501,319 @@ function FlowerEditForm({ flower, onSave, onCancel }: FlowerEditFormProps) {
       </div>
     </form>
   )
-} 
+}
+
+// Review Moderation Panel Component
+function ReviewModerationPanel() {
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selectedTab, setSelectedTab] = useState<'pending' | 'all' | 'stats'>('pending')
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectingReviewId, setRejectingReviewId] = useState<number | null>(null)
+
+  const loadPendingReviews = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/v1/reviews/admin/pending', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('Ошибка загрузки отзывов')
+      const data = await response.json()
+      setReviews(data)
+    } catch (error: any) {
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadAllReviews = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/v1/reviews?is_approved=', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('Ошибка загрузки отзывов')
+      const data = await response.json()
+      setReviews(data)
+    } catch (error: any) {
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadStats = async () => {
+    try {
+      const response = await fetch('/api/v1/reviews/admin/stats', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('Ошибка загрузки статистики')
+      const data = await response.json()
+      setStats(data)
+    } catch (error: any) {
+      setError(error.message)
+    }
+  }
+
+  const approveReview = async (reviewId: number) => {
+    try {
+      const response = await fetch(`/api/v1/reviews/admin/${reviewId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('Ошибка одобрения отзыва')
+      await loadPendingReviews()
+    } catch (error: any) {
+      setError(error.message)
+    }
+  }
+
+  const rejectReview = async (reviewId: number, reason: string) => {
+    try {
+      const response = await fetch(`/api/v1/reviews/admin/${reviewId}/reject?reason=${encodeURIComponent(reason)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      if (!response.ok) throw new Error('Ошибка отклонения отзыва')
+      await loadPendingReviews()
+      setRejectingReviewId(null)
+      setRejectReason('')
+    } catch (error: any) {
+      setError(error.message)
+    }
+  }
+
+  useEffect(() => {
+    if (selectedTab === 'pending') {
+      loadPendingReviews()
+    } else if (selectedTab === 'all') {
+      loadAllReviews()
+    } else if (selectedTab === 'stats') {
+      loadStats()
+    }
+  }, [selectedTab])
+
+  const renderStars = (rating: number) => {
+    return Array.from({ length: 5 }, (_, i) => (
+      <span key={i} className={i < rating ? 'text-yellow-400' : 'text-gray-300'}>★</span>
+    ))
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">Модерация отзывов</h3>
+        
+        {error && (
+          <Alert type="error" className="mb-4">
+            {error}
+          </Alert>
+        )}
+
+        {/* Tabs */}
+        <div className="flex space-x-4 mb-6 border-b">
+          <button
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              selectedTab === 'pending' 
+                ? 'border-pink-500 text-pink-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setSelectedTab('pending')}
+          >
+            🕐 На модерации ({reviews.filter(r => !r.is_approved && !r.is_flagged).length})
+          </button>
+          <button
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              selectedTab === 'all' 
+                ? 'border-pink-500 text-pink-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setSelectedTab('all')}
+          >
+            📝 Все отзывы
+          </button>
+          <button
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              selectedTab === 'stats' 
+                ? 'border-pink-500 text-pink-600' 
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setSelectedTab('stats')}
+          >
+            📊 Статистика
+          </button>
+        </div>
+
+        {loading && <div className="text-center py-8">Загрузка...</div>}
+
+        {/* Reviews List */}
+        {(selectedTab === 'pending' || selectedTab === 'all') && !loading && (
+          <div className="space-y-4">
+            {reviews.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                Отзывов не найдено
+              </div>
+            ) : (
+              reviews.map((review) => (
+                <div key={review.id} className="border rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium">
+                          Пользователь #{review.user_id}
+                        </span>
+                        <div className="flex">
+                          {renderStars(review.rating)}
+                        </div>
+                        <Badge className={
+                          review.is_approved 
+                            ? 'bg-green-100 text-green-800'
+                            : review.is_flagged 
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }>
+                          {review.is_approved 
+                            ? 'Одобрен' 
+                            : review.is_flagged 
+                            ? 'Отклонен' 
+                            : 'На модерации'}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Товар #{review.flower_id} • Заказ #{review.order_id}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(review.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {review.title && (
+                    <h4 className="font-medium mb-2">{review.title}</h4>
+                  )}
+                  
+                  <p className="text-gray-800 mb-3">{review.content}</p>
+
+                  {review.flagged_reason && (
+                    <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
+                      <span className="text-red-800 text-sm">
+                        <strong>Причина отклонения:</strong> {review.flagged_reason}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      👍 {review.helpful_votes} из {review.total_votes} считают полезным
+                    </div>
+                    
+                    {!review.is_approved && !review.is_flagged && (
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => approveReview(review.id)}
+                        >
+                          ✅ Одобрить
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-600 text-red-600 hover:bg-red-50"
+                          onClick={() => setRejectingReviewId(review.id)}
+                        >
+                          ❌ Отклонить
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reject Modal */}
+                  {rejectingReviewId === review.id && (
+                    <div className="mt-4 p-4 bg-white border rounded">
+                      <h5 className="font-medium mb-2">Причина отклонения:</h5>
+                      <textarea
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        className="w-full border rounded px-3 py-2 mb-3"
+                        rows={3}
+                        placeholder="Укажите причину отклонения отзыва..."
+                      />
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={() => rejectReview(review.id, rejectReason)}
+                          disabled={!rejectReason.trim()}
+                        >
+                          Отклонить
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRejectingReviewId(null)
+                            setRejectReason('')
+                          }}
+                        >
+                          Отмена
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Stats */}
+        {selectedTab === 'stats' && stats && !loading && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="p-4">
+              <h4 className="font-semibold mb-2">Средний рейтинг</h4>
+              <div className="text-3xl font-bold text-yellow-600">
+                {stats.average_rating.toFixed(1)}
+              </div>
+              <div className="flex mt-1">
+                {renderStars(Math.round(stats.average_rating))}
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <h4 className="font-semibold mb-3">Статус модерации</h4>
+              <div className="space-y-2">
+                {stats.approval_stats.map((stat: any) => (
+                  <div key={stat.is_approved.toString()} className="flex justify-between">
+                    <span className="text-sm">
+                      {stat.is_approved ? 'Одобрены' : 'На модерации'}
+                    </span>
+                    <span className="font-medium">{stat.count}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <h4 className="font-semibold mb-3">Распределение оценок</h4>
+              <div className="space-y-2">
+                {stats.rating_distribution.map((stat: any) => (
+                  <div key={stat.rating} className="flex justify-between items-center">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-sm">{stat.rating}</span>
+                      <span className="text-yellow-400">★</span>
+                    </div>
+                    <span className="font-medium">{stat.count}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}

@@ -1,5 +1,6 @@
 import { Flower, Truck, Clock, Heart } from 'lucide-react'
 import SEO from '../components/SEO'
+import BonusPromo from '../components/BonusPromo'
 
 export default function HomePage() {
   return (
@@ -63,6 +64,11 @@ export default function HomePage() {
           <h3 className="text-xl font-semibold mb-2">Персональный подход</h3>
           <p className="text-gray-600">Индивидуальные букеты под ваши предпочтения</p>
         </div>
+      </div>
+
+      {/* Bonus Program Promo */}
+      <div className="mb-16">
+        <BonusPromo showOnlyForGuests={true} />
       </div>
 
       {/* CTA Section */}

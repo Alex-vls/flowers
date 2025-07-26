@@ -86,7 +86,7 @@ export const SORT_OPTIONS = [
   { id: 'name', name: 'По названию' },
   { id: 'price', name: 'По цене' },
   { id: 'created_at', name: 'По дате добавления' },
-  { id: 'view_count', name: 'По популярности' },
+  { id: 'views_count', name: 'По популярности' },
 ] as const
 
 // Sort orders

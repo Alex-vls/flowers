@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '@/store'
 
 // API base URL - используем относительный путь для production
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -16,8 +17,10 @@ const api: AxiosInstance = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('access_token')
+    // ✅ ИСПРАВЛЕНО: Сначала authStore (надежно), потом localStorage (fallback)
+    const token = useAuthStore.getState().token || 
+                 localStorage.getItem('access_token')
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -40,30 +43,70 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      // Try to refresh token
-      const refreshToken = localStorage.getItem('refresh_token')
+      // ✅ ИСПРАВЛЕНО: Берем refresh token из localStorage ИЛИ authStore
+      const refreshToken = localStorage.getItem('refresh_token') || 
+                          useAuthStore.getState().refreshToken
+                          
+      console.log('🔄 Refresh token attempt:', {
+        hasLocalStorage: !!localStorage.getItem('refresh_token'),
+        hasAuthStore: !!useAuthStore.getState().refreshToken,
+        usingToken: refreshToken ? 'ЕСТЬ' : 'НЕТ'
+      })
+      
       if (refreshToken) {
         try {
           const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
             refresh_token: refreshToken,
           })
 
-          const { access_token, refresh_token } = response.data
-          localStorage.setItem('access_token', access_token)
-          localStorage.setItem('refresh_token', refresh_token)
+          const { access_token, refresh_token: newRefreshToken } = response.data
+          
+          // ✅ ИСПРАВЛЕНО: Сохраняем в оба хранилища
+          try {
+            localStorage.setItem('access_token', access_token)
+            localStorage.setItem('refresh_token', newRefreshToken)
+            console.log('✅ Tokens refreshed in localStorage')
+          } catch (localStorageError) {
+            console.warn('❌ Failed to save to localStorage:', localStorageError)
+          }
+          
+          // ✅ ГЛАВНОЕ: Обновляем authStore (это всегда работает)
+          const { login } = useAuthStore.getState()
+          login(useAuthStore.getState().user, access_token)
+          console.log('✅ Token refreshed in authStore')
 
           // Retry original request
           originalRequest.headers.Authorization = `Bearer ${access_token}`
           return api(originalRequest)
         } catch (refreshError) {
-          // Refresh failed, redirect to login
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+          console.error('❌ Token refresh failed:', refreshError)
+          // Refresh failed, clear tokens and redirect to login
+          try {
+            localStorage.removeItem('access_token')
+            localStorage.removeItem('refresh_token')
+          } catch (e) {
+            console.warn('Failed to clear localStorage:', e)
+          }
+          
+          // Clear authStore
+          useAuthStore.getState().logout()
+          
           window.location.href = '/login'
           return Promise.reject(refreshError)
         }
       } else {
-        // No refresh token, redirect to login
+        console.warn('❌ No refresh token available')
+        // No refresh token, clear everything and redirect to login
+        try {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+        } catch (e) {
+          console.warn('Failed to clear localStorage:', e)
+        }
+        
+        // Clear authStore
+        useAuthStore.getState().logout()
+        
         window.location.href = '/login'
         return Promise.reject(error)
       }
@@ -82,6 +125,9 @@ export const apiClient = {
   // Auth
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
+  
+  telegramAuth: (data: { telegram_id: number; first_name: string; last_name?: string; username?: string }) =>
+    api.post('/auth/telegram-auth', data),
   
   register: (data: { email: string; password: string; full_name: string }) =>
     api.post('/auth/register', data),
@@ -140,11 +186,25 @@ export const apiClient = {
   
   // Reviews
   getReviews: (params?: any) => api.get('/reviews', { params }),
+  getFlowerReviews: (flowerId: number, params?: any) => 
+    api.get(`/reviews?flower_id=${flowerId}`, { params }),
   createReview: (data: any) => api.post('/reviews', data),
+  addReview: (data: { flower_id: number; rating: number; comment: string; photos?: string[] }) => 
+    api.post('/reviews', data),
   updateReview: (id: number, data: any) => api.put(`/reviews/${id}`, data),
   deleteReview: (id: number) => api.delete(`/reviews/${id}`),
   voteReview: (id: number, helpful: boolean) =>
     api.post(`/reviews/${id}/vote`, { helpful }),
+  
+  // Admin Review Moderation
+  getPendingReviews: (params?: any) => 
+    api.get('/reviews/admin/pending', { params }),
+  approveReview: (reviewId: number) =>
+    api.post(`/reviews/admin/${reviewId}/approve`),
+  rejectReview: (reviewId: number, reason: string) =>
+    api.post(`/reviews/admin/${reviewId}/reject`, null, { params: { reason } }),
+  getReviewStats: () =>
+    api.get('/reviews/admin/stats'),
   
   // Notifications
   getNotifications: (params?: any) => api.get('/notifications', { params }),
@@ -152,6 +212,17 @@ export const apiClient = {
     api.post(`/notifications/${id}/read`),
   markAllNotificationsRead: () => api.post('/notifications/read-all'),
   getUnreadCount: () => api.get('/notifications/unread-count'),
+}
+
+// Telegram diagnostics
+export const submitTelegramDiagnostics = async (diagnosticsData: any) => {
+  try {
+    const response = await api.post('/monitoring/telegram-diagnostics', diagnosticsData)
+    return response.data
+  } catch (error) {
+    console.error('Failed to submit diagnostics:', error)
+    throw error
+  }
 }
 
 export default api 

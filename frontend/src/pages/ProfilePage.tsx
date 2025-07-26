@@ -1,12 +1,28 @@
 import React, { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { apiClient } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Badge from '@/components/ui/Badge'
 import Alert from '@/components/ui/Alert'
-import { User, Gift, Star, Settings } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
+import SEO from '@/components/SEO'
+import { 
+  User, 
+  Gift, 
+  Star, 
+  Settings, 
+  Package, 
+  Calendar,
+  CreditCard,
+  MessageSquare,
+  Edit,
+  Trash2,
+  Eye
+} from 'lucide-react'
 
 interface UserProfile {
   id: number
@@ -22,11 +38,34 @@ interface UserProfile {
 
 interface UserBonus {
   id: number
-  points: number
-  type: string
-  status: string
-  expires_at?: string
+  amount: number
+  description: string
   created_at: string
+  type: string
+}
+
+interface Order {
+  id: number
+  total_amount: number
+  status: string
+  created_at: string
+  delivery_date: string
+  delivery_address: string
+  items: Array<{
+    flower_name: string
+    quantity: number
+    price: number
+  }>
+}
+
+interface Review {
+  id: number
+  flower_id: number
+  flower_name: string
+  rating: number
+  comment: string
+  created_at: string
+  photos?: string[]
 }
 
 export default function ProfilePage() {
@@ -38,11 +77,35 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState('profile')
   
   const [editForm, setEditForm] = useState({
     full_name: '',
     phone: '',
     address: ''
+  })
+
+  // Fetch orders
+  const { data: orders = [], isLoading: ordersLoading } = useQuery({
+    queryKey: ['user-orders'],
+    queryFn: async () => {
+      const response = await apiClient.getOrders()
+      return response.data || []
+    },
+    enabled: isAuthenticated,
+  })
+
+  // Fetch reviews
+  const { data: reviews = [], isLoading: reviewsLoading } = useQuery({
+    queryKey: ['user-reviews'],
+    queryFn: async () => {
+      if (!user?.id) {
+        throw new Error('User ID is required')
+      }
+      const response = await apiClient.getReviews({ user_id: user.id })
+      return response.data || []
+    },
+    enabled: isAuthenticated && !!user?.id,
   })
 
   useEffect(() => {
@@ -78,7 +141,7 @@ export default function ProfilePage() {
     try {
       const [profileData, bonusesData] = await Promise.all([
         apiCall('/api/v1/users/me'),
-        apiCall('/api/v1/bonuses/').catch(() => []) // Бонусы могут быть недоступны
+        apiCall('/api/v1/bonuses/').catch(() => [])
       ])
 
       setProfile(profileData)
@@ -103,7 +166,7 @@ export default function ProfilePage() {
     try {
       const updatedProfile = await apiCall('/api/v1/users/me', {
         method: 'PUT',
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(editForm)
       })
       
       setProfile(updatedProfile)
@@ -115,214 +178,430 @@ export default function ProfilePage() {
     }
   }
 
-  const getBonusTypeLabel = (type: string) => {
-    switch (type) {
-      case 'welcome': return 'Приветственный'
-      case 'referral': return 'За реферала'
-      case 'purchase': return 'За покупку'
-      case 'gift': return 'Подарочный'
-      case 'promotion': return 'Акция'
-      default: return type
-    }
-  }
-
-  const getBonusStatusColor = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800'
-      case 'used': return 'bg-gray-100 text-gray-800'
-      case 'expired': return 'bg-red-100 text-red-800'
+      case 'delivered': return 'bg-green-100 text-green-800'
+      case 'delivering': return 'bg-blue-100 text-blue-800'
+      case 'confirmed': return 'bg-yellow-100 text-yellow-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  if (!isAuthenticated) {
-    return null
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'delivered': return 'Доставлен'
+      case 'delivering': return 'В пути'
+      case 'confirmed': return 'Подтвержден'
+      case 'cancelled': return 'Отменен'
+      default: return status
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ru-RU')
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">🎸 Мой профиль</h1>
-        <p className="text-gray-600">Управление аккаунтом и бонусами</p>
-      </div>
+    <>
+      <SEO
+        title="Мой профиль - MSK Flower"
+        description="Управление профилем, заказами, подписками и бонусами"
+      />
+      
+      <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">🎸 Мой профиль</h1>
+          <p className="text-gray-600">Управление аккаунтом, заказами и бонусами</p>
+        </div>
 
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          {error}
-        </Alert>
-      )}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            {error}
+          </Alert>
+        )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Основная информация */}
-        <div className="lg:col-span-2">
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold flex items-center">
-                <User className="w-5 h-5 mr-2" />
-                Личная информация
-              </h2>
-              <Button
-                variant="outline"
-                onClick={() => setEditing(!editing)}
-                disabled={loading}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                {editing ? 'Отмена' : 'Редактировать'}
-              </Button>
-            </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="profile">
+              <User className="w-4 h-4 mr-2" />
+              Профиль
+            </TabsTrigger>
+            <TabsTrigger value="orders">
+              <Package className="w-4 h-4 mr-2" />
+              Заказы ({orders.length})
+            </TabsTrigger>
+            <TabsTrigger value="reviews">
+              <Star className="w-4 h-4 mr-2" />
+              Отзывы ({reviews.length})
+            </TabsTrigger>
+            <TabsTrigger value="bonuses">
+              <Gift className="w-4 h-4 mr-2" />
+              Бонусы
+            </TabsTrigger>
+          </TabsList>
 
-            {loading && !profile ? (
-              <div className="text-center py-8">
-                <div className="animate-spin w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full mx-auto"></div>
-                <p className="mt-2 text-gray-600">Загрузка...</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Полное имя"
-                    value={editing ? editForm.full_name : profile?.full_name || ''}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, full_name: e.target.value }))}
-                    disabled={!editing}
-                  />
-                  
-                  <Input
-                    label="Email"
-                    value={profile?.email || ''}
-                    disabled={true}
-                    help="Email нельзя изменить"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Телефон"
-                    value={editing ? editForm.phone : profile?.phone || ''}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                    disabled={!editing}
-                    placeholder="+7-999-123-45-67"
-                  />
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Роль
-                    </label>
-                    <Badge className={profile?.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}>
-                      {profile?.role === 'admin' ? 'Администратор' : 'Клиент'}
-                    </Badge>
-                  </div>
-                </div>
-
-                <Input
-                  label="Адрес доставки"
-                  value={editing ? editForm.address : profile?.address || ''}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
-                  disabled={!editing}
-                  placeholder="Москва, ул. Панк-Рок, д. 1"
-                />
-
-                {editing && (
-                  <div className="flex space-x-4 pt-4">
-                    <Button 
-                      onClick={handleSaveProfile}
+          {/* Profile Tab */}
+          <TabsContent value="profile" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Main profile info */}
+              <div className="lg:col-span-2">
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-semibold flex items-center">
+                      <User className="w-5 h-5 mr-2" />
+                      Личная информация
+                    </h2>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditing(!editing)}
                       disabled={loading}
-                      className="flex-1"
                     >
-                      {loading ? 'Сохранение...' : 'Сохранить'}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setEditing(false)}
-                      className="flex-1"
-                    >
-                      Отмена
+                      <Settings className="w-4 h-4 mr-2" />
+                      {editing ? 'Отмена' : 'Редактировать'}
                     </Button>
                   </div>
-                )}
-              </div>
-            )}
-          </Card>
-        </div>
 
-        {/* Статистика и бонусы */}
-        <div className="space-y-6">
-          {/* Бонусные баллы */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold flex items-center mb-4">
-              <Gift className="w-5 h-5 mr-2" />
-              Бонусные баллы
-            </h3>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-pink-600">
-                {profile?.bonus_points || 0}
+                  {editing ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Полное имя
+                        </label>
+                        <Input
+                          value={editForm.full_name}
+                          onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                          placeholder="Введите полное имя"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Телефон
+                        </label>
+                        <Input
+                          value={editForm.phone}
+                          onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                          placeholder="+7 (XXX) XXX-XX-XX"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Адрес доставки
+                        </label>
+                        <Input
+                          value={editForm.address}
+                          onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                          placeholder="Введите адрес доставки"
+                        />
+                      </div>
+                      <div className="flex space-x-3">
+                        <Button onClick={handleSaveProfile} disabled={loading}>
+                          Сохранить
+                        </Button>
+                        <Button variant="outline" onClick={() => setEditing(false)}>
+                          Отмена
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm text-gray-600">Email</label>
+                          <p className="font-medium">{profile.email}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-600">Полное имя</label>
+                          <p className="font-medium">{profile.full_name || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-600">Телефон</label>
+                          <p className="font-medium">{profile.phone || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-600">Адрес</label>
+                          <p className="font-medium">{profile.address || '—'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Card>
               </div>
-              <div className="text-sm text-gray-600">баллов</div>
-            </div>
-          </Card>
 
-          {/* Статус аккаунта */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold flex items-center mb-4">
-              <Star className="w-5 h-5 mr-2" />
-              Статус
-            </h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Верификация:</span>
-                <Badge className={profile?.is_verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {profile?.is_verified ? 'Подтвержден' : 'Не подтвержден'}
-                </Badge>
-              </div>
-              <div className="flex justify-between">
-                <span>Участник с:</span>
-                <span className="text-sm text-gray-600">
-                  {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—'}
-                </span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+              {/* Sidebar */}
+              <div className="space-y-6">
+                {/* Bonus points */}
+                <Card className="p-6">
+                  <h3 className="text-lg font-semibold flex items-center mb-4">
+                    <Gift className="w-5 h-5 mr-2" />
+                    Бонусные баллы
+                  </h3>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-pink-600">
+                      {profile.bonus_points || 0}
+                    </div>
+                    <div className="text-sm text-gray-600">баллов</div>
+                  </div>
+                </Card>
 
-      {/* История бонусов */}
-      {bonuses.length > 0 && (
-        <Card className="p-6 mt-6">
-          <h3 className="text-lg font-semibold mb-4">История бонусов</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2">Дата</th>
-                  <th className="text-left py-2">Тип</th>
-                  <th className="text-left py-2">Баллы</th>
-                  <th className="text-left py-2">Статус</th>
-                  <th className="text-left py-2">Истекает</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bonuses.map((bonus) => (
-                  <tr key={bonus.id} className="border-b">
-                    <td className="py-2">
-                      {new Date(bonus.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-2">{getBonusTypeLabel(bonus.type)}</td>
-                    <td className="py-2 font-semibold">+{bonus.points}</td>
-                    <td className="py-2">
-                      <Badge className={getBonusStatusColor(bonus.status)}>
-                        {bonus.status === 'active' ? 'Активен' : 
-                         bonus.status === 'used' ? 'Использован' : 'Истек'}
+                {/* Account status */}
+                <Card className="p-6">
+                  <h3 className="text-lg font-semibold flex items-center mb-4">
+                    <Star className="w-5 h-5 mr-2" />
+                    Статус аккаунта
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>Верификация:</span>
+                      <Badge className={profile.is_verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                        {profile.is_verified ? 'Подтвержден' : 'Не подтвержден'}
                       </Badge>
-                    </td>
-                    <td className="py-2 text-sm text-gray-600">
-                      {bonus.expires_at ? new Date(bonus.expires_at).toLocaleDateString() : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-    </div>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Участник с:</span>
+                      <span className="text-sm text-gray-600">
+                        {formatDate(profile.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Orders Tab */}
+          <TabsContent value="orders" className="space-y-6">
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold flex items-center mb-6">
+                <Package className="w-5 h-5 mr-2" />
+                История заказов
+              </h2>
+
+              {ordersLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : orders.length > 0 ? (
+                <div className="space-y-4">
+                  {orders.map((order: Order) => (
+                    <div key={order.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h3 className="font-semibold">Заказ №{order.id}</h3>
+                            <Badge className={getStatusColor(order.status)}>
+                              {getStatusLabel(order.status)}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            {formatDate(order.created_at)} • Доставка: {formatDate(order.delivery_date)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg">{order.total_amount}₽</p>
+                          <p className="text-sm text-gray-600">{order.items?.length || 0} товар(ов)</p>
+                        </div>
+                      </div>
+
+                      {order.items && order.items.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {order.items.map((item, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span>{item.flower_name} × {item.quantity}</span>
+                              <span>{item.price * item.quantity}₽</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pt-3 border-t">
+                        <p className="text-sm text-gray-600">
+                          📍 {order.delivery_address}
+                        </p>
+                        <div className="flex space-x-2">
+                          <Link to={`/order/${order.id}`}>
+                            <Button size="sm" variant="outline">
+                              <Eye className="w-4 h-4 mr-1" />
+                              Детали
+                            </Button>
+                          </Link>
+                          {order.status === 'delivered' && (
+                            <Button size="sm" variant="outline">
+                              <Star className="w-4 h-4 mr-1" />
+                              Отзыв
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Package className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Нет заказов
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    У вас пока нет заказов
+                  </p>
+                  <Link to="/catalog">
+                    <Button>
+                      Перейти в каталог
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* Reviews Tab */}
+          <TabsContent value="reviews" className="space-y-6">
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold flex items-center mb-6">
+                <MessageSquare className="w-5 h-5 mr-2" />
+                Мои отзывы
+              </h2>
+
+              {reviewsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : reviews.length > 0 ? (
+                <div className="space-y-4">
+                  {reviews.map((review: Review) => (
+                    <div key={review.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-semibold">{review.flower_name}</h3>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <div className="flex">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  className={`w-4 h-4 ${
+                                    star <= review.rating
+                                      ? 'text-yellow-400 fill-current'
+                                      : 'text-gray-300'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-sm text-gray-600">
+                              {formatDate(review.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button size="sm" variant="outline">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button size="sm" variant="outline">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <p className="text-gray-700 mb-3">{review.comment}</p>
+
+                      {review.photos && review.photos.length > 0 && (
+                        <div className="flex space-x-2">
+                          {review.photos.map((photo, index) => (
+                            <img
+                              key={index}
+                              src={photo}
+                              alt={`Фото отзыва ${index + 1}`}
+                              className="w-16 h-16 object-cover rounded-lg"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <MessageSquare className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Нет отзывов
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Вы еще не оставили ни одного отзыва
+                  </p>
+                  <Link to="/orders">
+                    <Button>
+                      Посмотреть заказы
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* Bonuses Tab */}
+          <TabsContent value="bonuses" className="space-y-6">
+            <Card className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold flex items-center">
+                  <Gift className="w-5 h-5 mr-2" />
+                  История бонусов
+                </h2>
+                <Button 
+                  onClick={() => navigate('/bonuses')}
+                  className="bg-pink-600 hover:bg-pink-700"
+                  size="sm"
+                >
+                  Управление бонусами
+                </Button>
+              </div>
+
+              <div className="mb-6 text-center">
+                <div className="text-4xl font-bold text-pink-600 mb-2">
+                  {profile.bonus_points || 0}
+                </div>
+                <p className="text-gray-600">доступно баллов</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  1 балл = 1 рубль при оплате
+                </p>
+              </div>
+
+              {bonuses.length > 0 ? (
+                <div className="space-y-3">
+                  {bonuses.map((bonus) => (
+                    <div key={bonus.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{bonus.description}</p>
+                        <p className="text-sm text-gray-600">{formatDate(bonus.created_at)}</p>
+                      </div>
+                      <div className={`font-bold ${bonus.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {bonus.amount > 0 ? '+' : ''}{bonus.amount} баллов
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Gift className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Нет бонусных операций
+                  </h3>
+                  <p className="text-gray-600">
+                    История начисления и списания баллов появится здесь
+                  </p>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </>
   )
 } 

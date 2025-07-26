@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { useAuthStore } from '@/store'
+import { useAuth } from '@/hooks/useAuth'
+import { NotificationCenter } from '@/components/notifications'
 import { ShoppingCart, User, LogOut, Menu, X, Flower } from 'lucide-react'
 import { useState } from 'react'
 import { CONTACT_INFO, SOCIAL_LINKS } from '@/constants'
@@ -10,7 +11,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const { user, isAuthenticated, logout } = useAuth()
   const location = useLocation()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -19,6 +20,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Каталог', href: '/catalog' },
     { name: 'Подписка', href: '/subscription' },
     { name: 'Заказы', href: '/orders' },
+    { name: 'Бонусы', href: '/bonuses' },
   ]
 
   const isActive = (path: string) => location.pathname === path
@@ -71,6 +73,7 @@ export default function Layout({ children }: LayoutProps) {
                   >
                     <User className="w-5 h-5" />
                   </Link>
+                  <NotificationCenter />
                   <button
                     onClick={handleLogout}
                     className="p-2 text-gray-700 hover:text-rose-600 transition-colors"
@@ -131,6 +134,7 @@ export default function Layout({ children }: LayoutProps) {
                   >
                     Профиль
                   </Link>
+                  <NotificationCenter />
                   <button
                     onClick={handleLogout}
                     className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-rose-600 hover:bg-rose-50 transition-colors"

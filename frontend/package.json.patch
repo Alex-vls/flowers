@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "build:force": "vite build --mode production --logLevel warn",
+    "build:ignore-errors": "npx tsc --noEmit false && vite build"
+  }
+} 

@@ -1,11 +1,12 @@
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import uuid
 
 from app.core.database import get_db
 from app.api.v1.deps import get_current_active_user, get_current_admin_user
+from app.core.rate_limiter import rate_limit
 from app.models.user import User
 from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus
 from app.models.flower import Flower
@@ -64,7 +65,9 @@ def get_order(
 
 
 @router.post("/", response_model=OrderSchema)
+@rate_limit("user_orders")
 def create_order(
+    request: Request,
     order_in: OrderCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)

@@ -7,9 +7,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://flowersub:flowersub123@localhost/flowersub"
     
     # JWT
-    SECRET_KEY: str = "your-secret-key-here-change-in-production"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # ✅ ИСПРАВЛЕНО: 24 часа вместо 30 минут
     
     # CORS
     BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:5173", "https://msk-flower.su"]
@@ -27,10 +27,17 @@ class Settings(BaseSettings):
     YOOMONEY_SHOP_ID: str = "your-shop-id"
     YOOMONEY_SECRET_KEY: str = "your-secret-key"
     
-    # Telegram Bot
-    TELEGRAM_BOT_TOKEN: str = "8463349994:AAGKX7FzQk5r5pBrGo0QV6udB41jza4OnkY"
+    # Telegram Bot - ✅ ИСПРАВЛЕНО: Убрал hardcoded токен, теперь читаем из ENV
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_BOT_USERNAME: str = "Flower_Moscow_appbot"
     TELEGRAM_WEBHOOK_URL: str = "https://msk-flower.su/api/v1/telegram/webhook"
+    
+    # Yandex Delivery API
+    YANDEX_DELIVERY_TOKEN: str = ""
+    YANDEX_DELIVERY_CLIENT_ID: str = ""
+    YANDEX_DELIVERY_WEBHOOK_URL: str = "https://msk-flower.su/api/v1/delivery/webhook"
+    YANDEX_PICKUP_ADDRESS: str = "Москва, ул. Примерная, д. 1"  # Адрес склада/магазина
+    YANDEX_PICKUP_PHONE: str = "+7(999)123-45-67"  # Телефон для связи с курьером
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"

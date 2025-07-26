@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, flowers, subscriptions, orders, payments, bonuses, reviews, notifications, seo
+from app.api.v1.endpoints import auth, users, flowers, subscriptions, orders, payments, bonuses, reviews, notifications, seo, delivery
+from app.api.v1 import telegram
 
 api_router = APIRouter()
 
@@ -13,4 +14,6 @@ api_router.include_router(payments.router, prefix="/payments", tags=["payments"]
 api_router.include_router(bonuses.router, prefix="/bonuses", tags=["bonuses"])
 api_router.include_router(reviews.router, prefix="/reviews", tags=["reviews"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-api_router.include_router(seo.router, tags=["seo"]) 
+api_router.include_router(delivery.router, prefix="/delivery", tags=["delivery"])
+api_router.include_router(seo.router, tags=["seo"])
+api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"]) 

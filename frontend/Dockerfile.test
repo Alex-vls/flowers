@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Set base URL for tests
+ENV BASE_URL=http://nginx
+
+# Command to run tests
+CMD ["npm", "run", "test:e2e"] 

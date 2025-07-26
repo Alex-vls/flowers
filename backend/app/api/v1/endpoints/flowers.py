@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Dict, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
@@ -19,10 +19,11 @@ from app.schemas.flower import (
 router = APIRouter()
 
 
-@router.get("/", response_model=List[FlowerList])
+@router.get("/")
+@router.get("")  # Роут без trailing slash
 def get_flowers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(12, ge=1, le=100),
     category: FlowerCategory = None,
     min_price: float = None,
     max_price: float = None,
@@ -74,111 +75,70 @@ def get_flowers(
         else:
             query = query.order_by(Flower.name.asc())
     
-    flowers = query.offset(skip).limit(limit).all()
-    return flowers
+    # Calculate pagination
+    skip = (page - 1) * per_page
+    total_count = query.count()
+    flowers = query.offset(skip).limit(per_page).all()
+    
+    # Calculate total pages
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    # Convert to dict with proper enum handling
+    result = []
+    for flower in flowers:
+        result.append({
+            "id": flower.id,
+            "name": flower.name,
+            "category": flower.category.value if flower.category else None,  # Convert enum to string
+            "price": flower.price,
+            "image_url": flower.image_url,
+            "is_available": flower.is_available,
+            "views_count": flower.views_count,
+            "orders_count": flower.orders_count
+        })
+    
+    return {
+        "items": result,
+        "total": total_count,
+        "pages": total_pages,
+        "current_page": page,
+        "per_page": per_page
+    }
 
 
-@router.get("/search", response_model=List[FlowerList])
+@router.get("/search")
 def search_flowers(
-    search_data: FlowerSearch,
+    query: str = Query(..., description="Search query"),
+    limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db)
 ) -> Any:
     """Search flowers by name and description"""
-    search_term = f"%{search_data.query}%"
+    search_term = f"%{query}%"
     flowers = db.query(Flower).filter(
         or_(
             Flower.name.ilike(search_term),
             Flower.description.ilike(search_term)
         )
-    ).limit(search_data.limit).all()
+    ).limit(limit).all()
     
-    return flowers
-
-
-@router.get("/{flower_id}", response_model=FlowerSchema)
-def get_flower(
-    flower_id: int,
-    db: Session = Depends(get_db)
-) -> Any:
-    """Get flower by ID"""
-    flower = db.query(Flower).filter(Flower.id == flower_id).first()
-    if not flower:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Flower not found"
-        )
+    # Convert to dict with proper enum handling
+    result = []
+    for flower in flowers:
+        result.append({
+            "id": flower.id,
+            "name": flower.name,
+            "category": flower.category.value if flower.category else None,
+            "price": flower.price,
+            "image_url": flower.image_url,
+            "is_available": flower.is_available,
+            "views_count": flower.views_count,
+            "orders_count": flower.orders_count
+        })
     
-    # Increment view count
-    flower.views_count += 1
-    db.commit()
-    
-    return flower
+    return result
 
 
-@router.post("/", response_model=FlowerSchema)
-def create_flower(
-    flower_in: FlowerCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
-) -> Any:
-    """Create new flower - admin only"""
-    flower = Flower(**flower_in.dict())
-    db.add(flower)
-    db.commit()
-    db.refresh(flower)
-    return flower
-
-
-@router.put("/{flower_id}", response_model=FlowerSchema)
-def update_flower(
-    flower_id: int,
-    flower_update: FlowerUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
-) -> Any:
-    """Update flower - admin only"""
-    flower = db.query(Flower).filter(Flower.id == flower_id).first()
-    if not flower:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Flower not found"
-        )
-    
-    for field, value in flower_update.dict(exclude_unset=True).items():
-        setattr(flower, field, value)
-    
-    db.commit()
-    db.refresh(flower)
-    return flower
-
-
-@router.delete("/{flower_id}")
-def delete_flower(
-    flower_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
-) -> Any:
-    """Delete flower - admin only"""
-    flower = db.query(Flower).filter(Flower.id == flower_id).first()
-    if not flower:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Flower not found"
-        )
-    
-    db.delete(flower)
-    db.commit()
-    
-    return {"message": "Flower deleted"}
-
-
-@router.get("/categories/list")
-def get_categories() -> Any:
-    """Get all flower categories"""
-    return [category.value for category in FlowerCategory]
-
-
-@router.get("/popular", response_model=List[FlowerList])
+@router.get("/popular")
 def get_popular_flowers(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db)
@@ -188,10 +148,24 @@ def get_popular_flowers(
         Flower.is_available == True
     ).order_by(Flower.orders_count.desc()).limit(limit).all()
     
-    return flowers
+    # Convert to dict with proper enum handling
+    result = []
+    for flower in flowers:
+        result.append({
+            "id": flower.id,
+            "name": flower.name,
+            "category": flower.category.value if flower.category else None,
+            "price": flower.price,
+            "image_url": flower.image_url,
+            "is_available": flower.is_available,
+            "views_count": flower.views_count,
+            "orders_count": flower.orders_count
+        })
+    
+    return result
 
 
-@router.get("/seasonal", response_model=List[FlowerList])
+@router.get("/seasonal")
 def get_seasonal_flowers(
     db: Session = Depends(get_db)
 ) -> Any:
@@ -208,4 +182,164 @@ def get_seasonal_flowers(
         )
     ).all()
     
-    return flowers 
+    # Convert to dict with proper enum handling
+    result = []
+    for flower in flowers:
+        result.append({
+            "id": flower.id,
+            "name": flower.name,
+            "category": flower.category.value if flower.category else None,
+            "price": flower.price,
+            "image_url": flower.image_url,
+            "is_available": flower.is_available,
+            "views_count": flower.views_count,
+            "orders_count": flower.orders_count
+        })
+    
+    return result
+
+
+@router.get("/{flower_id}")
+def get_flower(
+    flower_id: int,
+    db: Session = Depends(get_db)
+) -> Any:
+    """Get flower by ID"""
+    flower = db.query(Flower).filter(Flower.id == flower_id).first()
+    if not flower:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flower not found"
+        )
+    
+    # Increment view count
+    flower.views_count += 1
+    db.commit()
+    
+    # Convert to dict with proper enum handling
+    return {
+        "id": flower.id,
+        "name": flower.name,
+        "description": flower.description,
+        "category": flower.category.value if flower.category else None,
+        "price": flower.price,
+        "image_url": flower.image_url,
+        "is_available": flower.is_available,
+        "is_seasonal": flower.is_seasonal,
+        "season_start": flower.season_start,
+        "season_end": flower.season_end,
+        "stock_quantity": flower.stock_quantity,
+        "min_order_quantity": flower.min_order_quantity,
+        "max_order_quantity": flower.max_order_quantity,
+        "meta_title": flower.meta_title,
+        "meta_description": flower.meta_description,
+        "tags": flower.tags,
+        "views_count": flower.views_count,
+        "orders_count": flower.orders_count,
+        "created_at": flower.created_at.isoformat() if flower.created_at else None,
+        "updated_at": flower.updated_at.isoformat() if flower.updated_at else None
+    }
+
+
+@router.post("/")
+def create_flower(
+    flower_in: FlowerCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+) -> Any:
+    """Create new flower"""
+    flower = Flower(**flower_in.dict())
+    db.add(flower)
+    db.commit()
+    db.refresh(flower)
+    
+    # Convert to dict with proper enum handling
+    return {
+        "id": flower.id,
+        "name": flower.name,
+        "description": flower.description,
+        "category": flower.category.value if flower.category else None,
+        "price": flower.price,
+        "image_url": flower.image_url,
+        "is_available": flower.is_available,
+        "is_seasonal": flower.is_seasonal,
+        "season_start": flower.season_start,
+        "season_end": flower.season_end,
+        "stock_quantity": flower.stock_quantity,
+        "min_order_quantity": flower.min_order_quantity,
+        "max_order_quantity": flower.max_order_quantity,
+        "meta_title": flower.meta_title,
+        "meta_description": flower.meta_description,
+        "tags": flower.tags,
+        "views_count": flower.views_count,
+        "orders_count": flower.orders_count,
+        "created_at": flower.created_at.isoformat() if flower.created_at else None,
+        "updated_at": flower.updated_at.isoformat() if flower.updated_at else None
+    }
+
+
+@router.put("/{flower_id}")
+def update_flower(
+    flower_id: int,
+    flower_in: FlowerUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+) -> Any:
+    """Update flower"""
+    flower = db.query(Flower).filter(Flower.id == flower_id).first()
+    if not flower:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flower not found"
+        )
+    
+    update_data = flower_in.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(flower, field, value)
+    
+    db.commit()
+    db.refresh(flower)
+    
+    # Convert to dict with proper enum handling
+    return {
+        "id": flower.id,
+        "name": flower.name,
+        "description": flower.description,
+        "category": flower.category.value if flower.category else None,
+        "price": flower.price,
+        "image_url": flower.image_url,
+        "is_available": flower.is_available,
+        "is_seasonal": flower.is_seasonal,
+        "season_start": flower.season_start,
+        "season_end": flower.season_end,
+        "stock_quantity": flower.stock_quantity,
+        "min_order_quantity": flower.min_order_quantity,
+        "max_order_quantity": flower.max_order_quantity,
+        "meta_title": flower.meta_title,
+        "meta_description": flower.meta_description,
+        "tags": flower.tags,
+        "views_count": flower.views_count,
+        "orders_count": flower.orders_count,
+        "created_at": flower.created_at.isoformat() if flower.created_at else None,
+        "updated_at": flower.updated_at.isoformat() if flower.updated_at else None
+    }
+
+
+@router.delete("/{flower_id}")
+def delete_flower(
+    flower_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user)
+) -> Any:
+    """Delete flower"""
+    flower = db.query(Flower).filter(Flower.id == flower_id).first()
+    if not flower:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flower not found"
+        )
+    
+    db.delete(flower)
+    db.commit()
+    
+    return {"message": "Flower deleted successfully"} 

@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: flower_postgres
+    environment:
+      POSTGRES_DB: flower_db
+      POSTGRES_USER: flower_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/postgres/correct_test_data.sql:/docker-entrypoint-initdb.d/correct_test_data.sql
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: flower_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flower_backend
+    environment:
+      - DATABASE_URL=postgresql://flower_user:${POSTGRES_PASSWORD}@postgres:5432/flower_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=production
+      - DEBUG=false
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - flower_network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: flower_frontend
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: flower_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+      - ./docker/ssl:/etc/nginx/ssl
+      - ./frontend/dist:/usr/share/nginx/html
+    networks:
+      - flower_network
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: flower_prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: flower_grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - flower_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  flower_network:
+    driver: bridge

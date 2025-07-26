@@ -147,7 +147,7 @@ export default function CatalogPage() {
                 <option value="price-asc">По цене (дешевле)</option>
                 <option value="price-desc">По цене (дороже)</option>
                 <option value="created_at-desc">Сначала новые</option>
-                <option value="view_count-desc">По популярности</option>
+                <option value="views_count-desc">По популярности</option>
               </select>
             </div>
           </div>

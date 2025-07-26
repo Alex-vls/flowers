@@ -12,7 +12,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true,
+    host: '0.0.0.0',
+    strictPort: false,
+    cors: true,
+    proxy: {},
+    allowedHosts: ['msk-flower.su', 'localhost'],
   },
   build: {
     outDir: 'dist',

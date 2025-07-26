@@ -1,0 +1,29 @@
+FROM node:18-alpine
+
+# Install dependencies for Playwright
+RUN apk add --no-cache \
+    chromium \
+    firefox \
+    webkit2gtk \
+    ttf-freefont
+
+# Set Playwright to use system browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Install Playwright
+RUN npx playwright install --with-deps
+
+# Command to run tests
+CMD ["npm", "run", "test:e2e"] 

@@ -12,33 +12,28 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./docker/postgres/correct_test_data.sql:/docker-entrypoint-initdb.d/correct_test_data.sql
+    ports:
+      - "5432:5432"
     networks:
       - flower_network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flower_user -d flower_db"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: flower_redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
+    ports:
+      - "6379:6379"
     networks:
       - flower_network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # FastAPI Backend
+  # Backend API
   backend:
     build:
       context: ./backend
@@ -51,18 +46,14 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - YOOMONEY_TOKEN=${YOOMONEY_TOKEN}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - LOG_LEVEL=INFO
     volumes:
       - backend_logs:/app/logs
+    ports:
+      - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     networks:
       - flower_network
     restart: unless-stopped
@@ -71,21 +62,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
-  # React Frontend
+  # Frontend React App (Production)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
     container_name: flower_frontend
-    environment:
-      - VITE_API_URL=https://${DOMAIN}/api
-      - VITE_TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
-      - NODE_ENV=production
+    ports:
+      - "3000:80"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - flower_network
     restart: unless-stopped
@@ -95,9 +82,10 @@ services:
     image: nginx:alpine
     container_name: flower_nginx
     volumes:
-      - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - nginx_logs:/var/log/nginx
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+      - ./ssl:/etc/nginx/ssl
+      - frontend_build:/usr/share/nginx/html
     ports:
       - "80:80"
       - "443:443"
@@ -107,58 +95,14 @@ services:
     networks:
       - flower_network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Prometheus Monitoring
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: flower_prometheus
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    ports:
-      - "127.0.0.1:9090:9090"
-    networks:
-      - flower_network
-    restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-
-  # Grafana Dashboard
-  grafana:
-    image: grafana/grafana:latest
-    container_name: flower_grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_DOMAIN=${DOMAIN}
-      - GF_SERVER_ROOT_URL=https://${DOMAIN}/grafana/
-    volumes:
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "127.0.0.1:3001:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - flower_network
-    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
   backend_logs:
-  nginx_logs:
-  prometheus_data:
+  frontend_build:
   grafana_data:
+  prometheus_data:
 
 networks:
   flower_network:

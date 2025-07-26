@@ -61,6 +61,12 @@ class Order(Base):
     estimated_delivery = Column(DateTime(timezone=True), nullable=True)
     actual_delivery = Column(DateTime(timezone=True), nullable=True)
     
+    # Yandex Delivery integration
+    delivery_claim_id = Column(String(100), nullable=True, index=True)  # ID заказа в Яндекс.Доставке
+    delivery_status = Column(String(50), nullable=True)  # Статус доставки от Яндекса
+    delivery_price = Column(Float, nullable=True)  # Стоимость доставки от Яндекса
+    delivered_at = Column(DateTime(timezone=True), nullable=True)  # Время фактической доставки
+    
     # Notes
     customer_notes = Column(Text, nullable=True)
     admin_notes = Column(Text, nullable=True)

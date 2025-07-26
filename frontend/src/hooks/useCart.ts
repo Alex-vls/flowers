@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Flower } from '@/types'
+import MetricsService from '@/services/metrics'
 
 export function useCart() {
   const { 
@@ -10,9 +11,9 @@ export function useCart() {
     addItem, 
     removeItem, 
     updateQuantity, 
-    clearCart, 
-    getTotal, 
-    getItemCount 
+    clearCart,
+    totalItems,
+    totalPrice
   } = useCartStore()
 
   // Create order mutation
@@ -21,7 +22,19 @@ export function useCart() {
       const response = await apiClient.createOrder(orderData)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Track successful order creation
+      MetricsService.trackBeginCheckout(
+        items.map(item => ({
+          id: item.flower.id.toString(),
+          name: item.flower.name,
+          category: item.flower.category || 'flowers',
+          price: item.flower.price,
+          quantity: item.quantity
+        })),
+        totalPrice
+      )
+      
       clearCart()
       toast.success('Заказ создан успешно!')
     },
@@ -31,22 +44,37 @@ export function useCart() {
     },
   })
 
-  // Add item to cart
+  // Add item to cart with metrics
   const addToCart = (flower: Flower, quantity: number = 1) => {
-    const cartItem = {
-      flower_id: flower.id,
+    addItem(flower, quantity)
+    
+    // Track add to cart event
+    MetricsService.trackAddToCart({
+      id: flower.id.toString(),
       name: flower.name,
+      category: flower.category || 'flowers',
       price: flower.price,
-      quantity,
-      image_url: flower.image_url,
-    }
+      quantity
+    })
 
-    addItem(cartItem)
     toast.success(`${flower.name} добавлен в корзину`)
   }
 
-  // Remove item from cart
+  // Remove item from cart with metrics
   const removeFromCart = (flowerId: number) => {
+    const item = items.find(item => item.flower.id === flowerId)
+    
+    if (item) {
+      // Track remove from cart event
+      MetricsService.trackRemoveFromCart({
+        id: item.flower.id.toString(),
+        name: item.flower.name,
+        category: item.flower.category || 'flowers',
+        price: item.flower.price,
+        quantity: item.quantity
+      })
+    }
+
     removeItem(flowerId)
     toast.success('Товар удален из корзины')
   }
@@ -60,33 +88,112 @@ export function useCart() {
     }
   }
 
-  // Checkout
-  const checkout = (deliveryData: any) => {
+  // Get total price - для CartPage
+  const getTotalPrice = () => {
+    return totalPrice
+  }
+
+  // Get total items count - для CartPage  
+  const getTotalItems = () => {
+    return totalItems
+  }
+
+  // Create order - для CartPage
+  const createOrder = async (orderData: any) => {
     if (items.length === 0) {
       toast.error('Корзина пуста')
-      return
+      return null
     }
 
-    const orderData = {
-      ...deliveryData,
+    const fullOrderData = {
+      ...orderData,
       items: items.map(item => ({
-        flower_id: item.flower_id,
+        flower_id: item.flower.id,
         quantity: item.quantity,
       })),
+      total_amount: totalPrice,
+      bonus_points_used: orderData.bonusPointsUsed || 0,
+      promo_code: orderData.promoCode || ''
     }
 
-    createOrderMutation.mutate(orderData)
+    try {
+      const response = await apiClient.createOrder(fullOrderData)
+      
+      // Track begin checkout
+      MetricsService.trackBeginCheckout(
+        items.map(item => ({
+          id: item.flower.id.toString(),
+          name: item.flower.name,
+          category: item.flower.category || 'flowers',
+          price: item.flower.price,
+          quantity: item.quantity
+        })),
+        totalPrice
+      )
+
+      clearCart()
+      toast.success('Заказ создан успешно!')
+      return response.data
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Ошибка создания заказа'
+      toast.error(message)
+      throw error
+    }
+  }
+
+  // Checkout (legacy method)
+  const checkout = (deliveryData: any) => {
+    createOrder(deliveryData)
+  }
+
+  // Check if cart is empty
+  const isEmpty = () => {
+    return items.length === 0
+  }
+
+  // Get cart subtotal (without delivery)
+  const getSubtotal = () => {
+    return totalPrice
+  }
+
+  // Calculate delivery fee
+  const getDeliveryFee = (subtotal: number) => {
+    return subtotal >= 1000 ? 0 : 300 // Бесплатная доставка от 1000₽
+  }
+
+  // Get cart summary for checkout
+  const getCartSummary = () => {
+    const subtotal = getSubtotal()
+    const deliveryFee = getDeliveryFee(subtotal)
+    const total = subtotal + deliveryFee
+
+    return {
+      subtotal,
+      deliveryFee,
+      total,
+      itemsCount: getTotalItems(),
+      items: items
+    }
   }
 
   return {
     items,
-    total: getTotal(),
-    itemCount: getItemCount(),
+    total: totalPrice,
+    itemCount: totalItems,
     addToCart,
     removeFromCart,
     updateItemQuantity,
     clearCart,
     checkout,
+    createOrder,
+    getTotalPrice,
+    getTotalItems,
+    isEmpty,
+    getSubtotal,
+    getDeliveryFee,
+    getCartSummary,
     isLoading: createOrderMutation.isPending,
+    updateQuantity: updateItemQuantity, // Alias для совместимости
+    removeItem: removeFromCart, // Alias для совместимости
   }
 } 

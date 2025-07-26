@@ -7,6 +7,14 @@ import { HelmetProvider } from 'react-helmet-async'
 
 import App from './App.tsx'
 import './index.css'
+import { setupApiInterceptors, setupTokenRefresh } from './lib/tokenRefresh'
+
+// Initialize token refresh system
+setupApiInterceptors()
+const cleanupTokenRefresh = setupTokenRefresh()
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanupTokenRefresh)
 
 // Create a client
 const queryClient = new QueryClient({
